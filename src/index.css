@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+:root {
+  --loom-ink: #1c1b1a;
+  --loom-paper: #faf8f4;
+  --loom-thread: #7a5c3e;
+  --loom-thread-light: #c9a878;
+  --loom-accent: #2f5d50;
+  --loom-line: #e4ded2;
+}
+
+body {
+  background-color: var(--loom-paper);
+  color: var(--loom-ink);
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+}
