@@ -1,4 +1,4 @@
 employee_id,name,email,job_title,hire_date,manager_id
-1,Ada Lovelace,ada@example.org,Research Lead,2019-03-01,
-2,Grace Hopper,grace@example.org,Senior Engineer,2020-06-15,1
-3,Alan Turing,alan@example.org,Research Scientist,2021-01-10,1
+1,Ada Lovelace,ada@example.org,Engineering Manager,2019-03-01,
+2,Grace Hopper,grace@example.org,Senior Engineer,2020-07-15,1
+3,Alan Turing,alan@example.org,Researcher,2021-01-10,1
