@@ -52,7 +52,20 @@ export function FileImport({ onParsed }: Props) {
         }`}
       >
         <p className="text-lg font-medium mb-2">Drop a CSV file here</p>
-        <p className="text-sm text-neutral-500 mb-6">Your file stays in this browser tab. Nothing is uploaded anywhere.</p>
+        <div className="text-sm text-neutral-500 mb-6 space-y-2">
+          <p>Your file stays in this browser tab. Nothing is uploaded anywhere.</p>
+          <p>
+            Need a file to test?{' '}
+            <a
+              href={`${import.meta.env.BASE_URL}examples/sample-people.csv`}
+              download
+              className="underline underline-offset-2 hover:text-[var(--loom-ink)]"
+            >
+              Download the sample CSV
+            </a>
+            .
+          </p>
+        </div>
         <label className="inline-block cursor-pointer rounded-full bg-[var(--loom-ink)] text-white px-6 py-2 text-sm font-medium hover:opacity-90 transition-opacity">
           Choose file
           <input
