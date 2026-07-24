@@ -8,7 +8,7 @@ interface Props {
   table: ParsedTable
   /** previous mapping state, when returning from the results step */
   initial?: MappingConfig
-  onMappingReady: (mapping: MappingConfig, ontologyId: string) => void
+  onMappingReady: (mapping: MappingConfig) => void
 }
 
 function buildInitialColumns(
@@ -347,10 +347,13 @@ export function MappingEditor({ table, initial, onMappingReady }: Props) {
         disabled={(identifierDuplicates.length > 0 && !mergeAcknowledged) || !baseIriValid}
         className="rounded-full bg-[var(--loom-accent)] text-white px-6 py-2 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
         onClick={() =>
-          onMappingReady(
-            { baseIri: baseIri.trim(), ontologyId, rdfType, identifierColumn, columns },
+          onMappingReady({
+            baseIri: baseIri.trim(),
             ontologyId,
-          )
+            rdfType,
+            identifierColumn,
+            columns,
+          })
         }
       >
         Generate knowledge graph
