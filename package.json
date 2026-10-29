@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "n3": "^2.1.1",
+    "oxigraph": "^0.5.13",
     "papaparse": "^5.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
