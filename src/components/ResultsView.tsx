@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { generateTriples, quadsToTurtle, slugify } from '../lib/tripleGenerator'
 import { bundledOntologies } from '../lib/ontologies'
+import { downloadText } from '../lib/download'
 import type { MappingConfig, ParsedTable } from '../lib/types'
 
 interface Props {
@@ -8,6 +9,8 @@ interface Props {
   mapping: MappingConfig
   onBack: () => void
   onStartOver: () => void
+  /** open the query view over exactly this Turtle */
+  onQuery: (turtle: string) => void
 }
 
 interface Stats {
@@ -17,7 +20,7 @@ interface Stats {
   duplicateIdentifiers: string[]
 }
 
-export function ResultsView({ table, mapping, onBack, onStartOver }: Props) {
+export function ResultsView({ table, mapping, onBack, onStartOver, onQuery }: Props) {
   const [turtle, setTurtle] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
@@ -46,13 +49,7 @@ export function ResultsView({ table, mapping, onBack, onStartOver }: Props) {
   }, [table, mapping])
 
   function download() {
-    const blob = new Blob([turtle], { type: 'text/turtle' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'graph.ttl'
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadText(turtle, 'graph.ttl', 'text/turtle')
   }
 
   if (error) {
@@ -148,6 +145,13 @@ export function ResultsView({ table, mapping, onBack, onStartOver }: Props) {
           Download graph.ttl
         </button>
         <button
+          onClick={() => onQuery(turtle)}
+          disabled={!turtle}
+          className="rounded-full border border-[var(--loom-accent)] text-[var(--loom-accent)] px-6 py-2 text-sm font-medium hover:bg-[var(--loom-accent)] hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Query with SPARQL
+        </button>
+        <button
           onClick={onBack}
           className="rounded-full border border-[var(--loom-line)] px-6 py-2 text-sm font-medium hover:bg-neutral-50 transition-colors"
         >
@@ -162,7 +166,7 @@ export function ResultsView({ table, mapping, onBack, onStartOver }: Props) {
       </div>
 
       <p className="text-xs text-neutral-500">
-        SPARQL querying and SHACL validation are next on the roadmap — see the project README.
+        SHACL validation is next on the roadmap — see the project README.
       </p>
     </div>
   )

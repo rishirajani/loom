@@ -1,10 +1,16 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { FileImport } from './components/FileImport'
 import { MappingEditor } from './components/MappingEditor'
 import { ResultsView } from './components/ResultsView'
+import { bundledOntologies } from './lib/ontologies'
 import type { MappingConfig, ParsedTable } from './lib/types'
 
-type Step = 'import' | 'map' | 'results'
+// Loaded on demand: the query view (and the Turtle parser it uses) is only
+// fetched when someone opens it, keeping the first load as small as before.
+// The 1.5 MB query engine itself loads separately, inside its worker.
+const QueryView = lazy(() => import('./components/QueryView').then((m) => ({ default: m.QueryView })))
+
+type Step = 'import' | 'map' | 'results' | 'query'
 
 function App() {
   const [step, setStep] = useState<Step>('import')
@@ -12,6 +18,10 @@ function App() {
   const [fileName, setFileName] = useState('')
   const [parseWarnings, setParseWarnings] = useState<string[]>([])
   const [mapping, setMapping] = useState<MappingConfig | null>(null)
+  // The exact Turtle shown and downloaded on the results step, so queries run
+  // over the same graph the user exports.
+  const [queryTurtle, setQueryTurtle] = useState('')
+  const ontology = mapping ? bundledOntologies.find((o) => o.id === mapping.ontologyId) : undefined
 
   function reset() {
     setStep('import')
@@ -19,6 +29,7 @@ function App() {
     setMapping(null)
     setParseWarnings([])
     setFileName('')
+    setQueryTurtle('')
   }
 
   return (
@@ -71,7 +82,30 @@ function App() {
         )}
 
         {step === 'results' && table && mapping && (
-          <ResultsView table={table} mapping={mapping} onBack={() => setStep('map')} onStartOver={reset} />
+          <ResultsView
+            table={table}
+            mapping={mapping}
+            onBack={() => setStep('map')}
+            onStartOver={reset}
+            onQuery={(turtle) => {
+              setQueryTurtle(turtle)
+              setStep('query')
+            }}
+          />
+        )}
+
+        {step === 'query' && mapping && ontology && queryTurtle && (
+          <Suspense
+            fallback={<p className="max-w-4xl mx-auto text-sm text-neutral-500">Opening the query view…</p>}
+          >
+            <QueryView
+              turtle={queryTurtle}
+              mapping={mapping}
+              ontology={ontology}
+              onBack={() => setStep('results')}
+              onStartOver={reset}
+            />
+          </Suspense>
         )}
       </main>
     </div>

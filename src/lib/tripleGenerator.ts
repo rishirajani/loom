@@ -116,16 +116,23 @@ export function generateTriples(
   }
 }
 
+/**
+ * The prefixes declared in Loom's Turtle output. Also used to pre-fill the
+ * query editor and to pretty-print CONSTRUCT results, so a name written in
+ * the exported file means the same thing in a query.
+ */
+export function graphPrefixes(ontology: Ontology): Record<string, string> {
+  return {
+    [ontology.prefix]: ontology.namespace,
+    dct: DCT_NS,
+    xsd: XSD,
+    rdf: RDF_NS,
+  }
+}
+
 export function quadsToTurtle(quadList: Quad[], ontology: Ontology): Promise<string> {
   return new Promise((resolve, reject) => {
-    const writer = new Writer({
-      prefixes: {
-        [ontology.prefix]: ontology.namespace,
-        dct: DCT_NS,
-        xsd: XSD,
-        rdf: RDF_NS,
-      },
-    })
+    const writer = new Writer({ prefixes: graphPrefixes(ontology) })
     writer.addQuads(quadList)
     writer.end((error, result) => {
       if (error) reject(error)
