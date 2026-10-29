@@ -28,26 +28,36 @@ interface HeaderPlan {
 function planHeaders(rawHeaders: string[]): HeaderPlan {
   const warnings: string[] = []
   const cleaned: string[] = []
-  const seen = new Map<string, number>()
   let emptyCount = 0
   const renamed: string[] = []
 
-  for (const raw of rawHeaders) {
-    const base = cleanHeader(raw)
+  const bases = rawHeaders.map(cleanHeader)
+  // Every name the file itself uses is reserved up front, so a generated
+  // rename can never take a name a later (or earlier) real column already has.
+  // Without this, `name,name,name_1` renamed the second `name` to `name_1` and
+  // the two columns collapsed into one row key — silently losing a value while
+  // the warning claimed nothing was lost.
+  const taken = new Set(bases.filter((b) => b !== ''))
+  const firstSeen = new Set<string>()
+
+  for (const base of bases) {
     if (base === '') {
       emptyCount++
       cleaned.push('') // dropped downstream
       continue
     }
-    const priorCount = seen.get(base) ?? 0
-    seen.set(base, priorCount + 1)
-    if (priorCount === 0) {
+    if (!firstSeen.has(base)) {
+      // First occurrence keeps its name as written.
+      firstSeen.add(base)
       cleaned.push(base)
-    } else {
-      const unique = `${base}_${priorCount}`
-      cleaned.push(unique)
-      renamed.push(`${base} → ${unique}`)
+      continue
     }
+    let n = 1
+    while (taken.has(`${base}_${n}`)) n++
+    const unique = `${base}_${n}`
+    taken.add(unique)
+    cleaned.push(unique)
+    renamed.push(`${base} → ${unique}`)
   }
 
   if (renamed.length > 0) {

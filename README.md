@@ -37,10 +37,10 @@ Then open the local Vite URL, usually:
 http://localhost:5173/
 ```
 
-You can try the included sample file:
+You can try the included sample file (the same one the app's sample download serves):
 
 ```text
-examples/sample-people.csv
+public/examples/sample-people.csv
 ```
 
 Before opening a pull request or publishing a build, run:
