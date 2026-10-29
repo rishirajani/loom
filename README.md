@@ -60,6 +60,7 @@ npm run lint
 3. **Review suggestion strength** — suggestions are intentionally tiered:
    - **Strong suggestions** have real name or synonym evidence and can be pre-selected.
    - **Weak suggestions** are opt-in hints. They are not auto-selected, because value shape alone can be misleading. For example, an early build suggested `hire_date → schema:birthDate` because the values looked like dates. Loom now treats that as a weak hint, not a trusted mapping.
+   - **One pre-selected column per property.** When several columns match the same property (`name`, `full_name` and `display_name` all suggesting `schema:name`), only the best is pre-selected: exact name match first, then known synonym, then the stronger evidence, then column order. The others become hints that say which column was chosen and why. They can still be applied, since in RDF several columns can rightly share a property (two email addresses). This step is adapted from [Open Ontologies](#related-work-and-acknowledgements).
 
 4. **Protect graph integrity** — Loom checks for duplicate or slug-colliding identifiers and requires explicit merge consent when rows would become the same entity.
 
@@ -71,7 +72,7 @@ npm run lint
 
 - Local-first CSV-to-RDF export
 - Bundled Schema.org and DCAT ontology subsets
-- Strong/weak mapping suggestions
+- Strong/weak mapping suggestions, with at most one pre-selected column per property
 - Curated alias handling, such as `manager_id → schema:colleague`
 - Object references between rows when values point to another row identifier
 - Duplicate identifier and IRI-collision detection
@@ -121,6 +122,11 @@ npm run lint
 - **Hints are for completeness; gates are for correctness.** Weak suggestions can be ignored. Invalid Base IRIs and unacknowledged entity merges cannot.
 - **Ontology semantics matter.** `manager_id → schema:worksFor` looked useful but was semantically wrong for person-to-person references. Loom now maps that case to `schema:colleague` instead.
 - **The UI should explain what happened.** Identifier columns become IRIs, skipped columns are reported, and low coverage is called out.
+
+## Related work and acknowledgements
+
+- **[Oxigraph](https://github.com/oxigraph/oxigraph)** — the SPARQL engine behind Loom's query view, compiled to WebAssembly (MIT / Apache-2.0).
+- **[Open Ontologies](https://github.com/fabio-rovai/open-ontologies)** — F. Rovai, *Open Ontologies: Tool-Augmented Ontology Engineering with Stable Matching Alignment*, [arXiv:2605.09184](https://arxiv.org/abs/2605.09184). Loom's "one pre-selected column per property" rule adapts its stable one-to-one matching step, which keeps only the top-scoring candidate on each side of an ontology alignment. Loom differs in two ways: losing columns become opt-in hints instead of being discarded, and ties are broken by an explicit, reported rule. The idea is borrowed; no code is. Open Ontologies is an MCP server and desktop studio for AI-assisted ontology engineering; Loom is a no-install browser tool, so the two are complementary rather than alternatives.
 
 ## Contributing
 

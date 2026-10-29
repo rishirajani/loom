@@ -133,3 +133,89 @@ describe('evidence labels', () => {
     expect(suggestions.find((s) => s.column === 'hire_date')?.evidence).toBe('name similarity')
   })
 })
+
+// Pinned decision: at most one column per property is pre-selected; other
+// strong candidates become opt-in hints that say who won and why. Adapted from
+// the stable one-to-one matching step in Open Ontologies (Rovai,
+// arXiv:2605.09184) — see resolveCompetingSuggestions for how Loom differs.
+describe('competing columns for one property', () => {
+  const person = (headers: string[], values: Record<string, string[]> = {}) =>
+    suggestMappings(headers, values, schemaOrgOntology, 'schema:Person')
+  const get = (s: ReturnType<typeof person>, column: string) => s.find((x) => x.column === column)!
+  const strongFor = (s: ReturnType<typeof person>, predicate: string) =>
+    s.filter((x) => x.predicate === predicate && x.strength === 'strong').map((x) => x.column)
+
+  it('pre-selects only one column per property', () => {
+    // Before: all three were strong, so every person got three schema:name values.
+    const s = person(['display_name', 'full_name', 'name'], {
+      display_name: ['ada'],
+      full_name: ['Ada Lovelace'],
+      name: ['Ada'],
+    })
+    expect(strongFor(s, 'schema:name')).toEqual(['name'])
+  })
+
+  it('keeps the losers as hints that name the winner and the reason', () => {
+    const s = person(['display_name', 'name'])
+    const loser = get(s, 'display_name')
+    expect(loser.predicate).toBe('schema:name')
+    expect(loser.strength).toBe('weak')
+    expect(loser.outranked).toEqual({ by: 'name', why: '“name” is an exact name match' })
+    expect(get(s, 'name').outranked).toBeUndefined()
+  })
+
+  it('ranks an exact name match above a synonym, wherever it appears in the file', () => {
+    const s = person(['mobile', 'telephone'])
+    expect(strongFor(s, 'schema:telephone')).toEqual(['telephone'])
+  })
+
+  it('breaks a confidence tie on the unclamped score: phone also matches the description', () => {
+    // phone, mobile and cell all reported confidence 1.00 (capped), but only
+    // phone also matches "Phone number." — that real difference decides it.
+    const s = person(['mobile', 'cell', 'phone'])
+    expect(strongFor(s, 'schema:telephone')).toEqual(['phone'])
+    expect(get(s, 'mobile').outranked?.why).toMatch(/^“phone” had more supporting evidence/)
+  })
+
+  it('falls back to column order for a true tie, and says so', () => {
+    const s = person(['cell', 'mobile'])
+    expect(strongFor(s, 'schema:telephone')).toEqual(['cell'])
+    expect(get(s, 'mobile').outranked).toEqual({
+      by: 'cell',
+      why: '“cell” matched equally well and comes first in the file',
+    })
+  })
+
+  it('is deterministic: same input, same winner', () => {
+    const headers = ['cell', 'mobile', 'phone', 'name', 'full_name']
+    expect(person(headers)).toEqual(person(headers))
+  })
+
+  it('leaves columns for different properties alone', () => {
+    const s = person(['name', 'email', 'job_title'])
+    expect(s.every((x) => x.strength === 'strong' && !x.outranked)).toBe(true)
+  })
+
+  it('does not touch weak suggestions — hire_date stays an ordinary hint', () => {
+    const s = person(['birth_date', 'hire_date'], { birth_date: ['1990-01-01'], hire_date: ['2020-01-01'] })
+    expect(strongFor(s, 'schema:birthDate')).toEqual(['birth_date'])
+    expect(get(s, 'hire_date').strength).toBe('weak')
+    expect(get(s, 'hire_date').outranked).toBeUndefined()
+  })
+
+  it('applies to object properties too: one colleague column pre-selected', () => {
+    const s = person(['manager_id', 'supervisor_id'], { manager_id: ['1'], supervisor_id: ['2'] })
+    expect(strongFor(s, 'schema:colleague')).toHaveLength(1)
+  })
+
+  it('works the same in DCAT: title beats dataset_title, keyword vs tags resolved', () => {
+    const s = suggestMappings(
+      ['dataset_title', 'title', 'tags', 'keyword'],
+      {},
+      dcatOntology,
+      'dcat:Dataset',
+    )
+    expect(s.filter((x) => x.predicate === 'dct:title' && x.strength === 'strong').map((x) => x.column)).toEqual(['title'])
+    expect(s.filter((x) => x.predicate === 'dcat:keyword' && x.strength === 'strong').map((x) => x.column)).toEqual(['keyword'])
+  })
+})

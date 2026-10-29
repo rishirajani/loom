@@ -70,6 +70,8 @@ export function suggestMappings(
     (p) => !p.domain || p.domain.includes(rdfType),
   )
   const suggestions: SuggestedMapping[] = []
+  // Unclamped scores, for ranking columns that compete for one property.
+  const rawScores = new Map<SuggestedMapping, number>()
 
   for (const header of headers) {
     const headerTokens = tokenize(header)
@@ -126,7 +128,7 @@ export function suggestMappings(
             : best.labelScore > 0
               ? ('name similarity' as const)
               : ('value pattern' as const)
-      suggestions.push({
+      const suggestion: SuggestedMapping = {
         column: header,
         predicate: best.property.id,
         confidence: Math.min(best.score, 1),
@@ -137,9 +139,81 @@ export function suggestMappings(
         // is a hint, not a decision — hire_date must never silently become
         // birthDate again.
         strength: best.labelEvidence >= 0.5 ? 'strong' : 'weak',
-      })
+      }
+      rawScores.set(suggestion, best.score)
+      suggestions.push(suggestion)
     }
   }
 
+  resolveCompetingSuggestions(suggestions, headers, rawScores)
   return suggestions
+}
+
+const EVIDENCE_RANK: Record<SuggestedMapping['evidence'], number> = {
+  'exact name match': 0,
+  'known synonym': 1,
+  'name similarity': 2,
+  'value pattern': 3,
+}
+
+/**
+ * At most one column per property is pre-selected.
+ *
+ * Without this, `name`, `full_name` and `display_name` were all pre-selected
+ * as schema:name (every person got three names, one a lowercase handle), and
+ * `phone`, `mobile` and `cell` tied at confidence 1.00 for schema:telephone.
+ *
+ * Adapted from the stable one-to-one matching step in Open Ontologies
+ * (F. Rovai, "Open Ontologies: Tool-Augmented Ontology Engineering with
+ * Stable Matching Alignment", arXiv:2605.09184;
+ * https://github.com/fabio-rovai/open-ontologies), which keeps only the
+ * top-scoring candidate on each side of an ontology alignment to remove
+ * spurious many-to-many matches. Two deliberate differences:
+ * - Losing columns are demoted to opt-in hints, not discarded. In RDF a
+ *   property can legitimately take values from several columns (work_email
+ *   and personal_email as schema:email), so this is the user's call — Loom
+ *   only stops pre-selecting it on their behalf.
+ * - Ties are broken explicitly and the reason is reported, since the paper
+ *   does not specify tie-breaking: stronger evidence kind first (exact name >
+ *   known synonym > name similarity), then the unclamped score (confidence is
+ *   capped at 1, which hid real differences), then column order in the file.
+ */
+function resolveCompetingSuggestions(
+  suggestions: SuggestedMapping[],
+  headers: string[],
+  rawScores: Map<SuggestedMapping, number>,
+): void {
+  const byPredicate = new Map<string, SuggestedMapping[]>()
+  for (const s of suggestions) {
+    if (s.strength !== 'strong') continue
+    const group = byPredicate.get(s.predicate) ?? []
+    group.push(s)
+    byPredicate.set(s.predicate, group)
+  }
+
+  const score = (s: SuggestedMapping) => rawScores.get(s) ?? s.confidence
+  const position = (s: SuggestedMapping) => headers.indexOf(s.column)
+
+  for (const group of byPredicate.values()) {
+    if (group.length < 2) continue
+    group.sort(
+      (a, b) =>
+        EVIDENCE_RANK[a.evidence] - EVIDENCE_RANK[b.evidence] ||
+        score(b) - score(a) ||
+        position(a) - position(b),
+    )
+    const [winner, ...rest] = group
+    for (const loser of rest) {
+      let why: string
+      if (EVIDENCE_RANK[winner.evidence] < EVIDENCE_RANK[loser.evidence]) {
+        why = `“${winner.column}” is ${winner.evidence === 'exact name match' ? 'an exact name match' : `a ${winner.evidence}`}`
+      } else if (score(winner) > score(loser)) {
+        why = `“${winner.column}” had more supporting evidence (${winner.reason})`
+      } else {
+        why = `“${winner.column}” matched equally well and comes first in the file`
+      }
+      loser.strength = 'weak'
+      loser.outranked = { by: winner.column, why }
+    }
+  }
 }

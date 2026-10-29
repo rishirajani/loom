@@ -81,4 +81,17 @@ export interface SuggestedMapping {
    * shown as a hint the user must explicitly apply, never pre-selected.
    */
   strength: 'strong' | 'weak'
+  /**
+   * Set when this column had strong evidence but another column won the same
+   * property (only one column per property is pre-selected). The suggestion
+   * is then 'weak': shown as an opt-in hint, because several columns sharing
+   * a property is sometimes right (two email addresses) and sometimes not
+   * (`name` and `display_name` both as schema:name).
+   */
+  outranked?: {
+    /** the column that was pre-selected for this property */
+    by: string
+    /** plain-language reason the winner was chosen */
+    why: string
+  }
 }

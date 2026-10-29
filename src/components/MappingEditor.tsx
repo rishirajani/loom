@@ -73,6 +73,16 @@ export function MappingEditor({ table, initial, onMappingReady }: Props) {
       ),
     [ontology, rdfType, table.headers, table.sampleValues],
   )
+  // For each pre-selected column, the other columns that also matched its
+  // property and were demoted to hints — shown so the choice isn't silent.
+  const outrankedByColumn = useMemo(() => {
+    const map = new Map<string, string[]>()
+    for (const s of suggestionMap.values()) {
+      if (!s.outranked) continue
+      map.set(s.outranked.by, [...(map.get(s.outranked.by) ?? []), s.column])
+    }
+    return map
+  }, [suggestionMap])
 
   function applySuggestionsPreservingUserWork(nextOntologyId: string, nextRdfType: string) {
     const nextOntology = bundledOntologies.find((o) => o.id === nextOntologyId)!
@@ -242,8 +252,10 @@ export function MappingEditor({ table, initial, onMappingReady }: Props) {
         // Fit signal: if few columns find strong matches, the problem is
         // usually not the matcher — it's that the data doesn't describe the
         // chosen class (e.g. a people spreadsheet mapped as dcat:Dataset).
+        // Columns demoted only because another column won the same property
+        // still describe this class, so they count toward fit.
         const strongCount = Array.from(suggestionMap.values()).filter(
-          (s) => s.strength === 'strong',
+          (s) => s.strength === 'strong' || s.outranked,
         ).length
         const relevantColumns = table.headers.filter((h) => h !== identifierColumn).length
         return relevantColumns >= 4 && strongCount <= Math.floor(relevantColumns / 3) ? (
@@ -309,6 +321,12 @@ export function MappingEditor({ table, initial, onMappingReady }: Props) {
                     {isSuggested && suggestion.strength === 'strong' && (
                       <span className="ml-2 text-xs text-[var(--loom-accent)]" title={suggestion.reason}>
                         suggested · {suggestion.evidence}
+                        {outrankedByColumn.has(col.column) && (
+                          <span className="text-neutral-500">
+                            {' '}
+                            · chosen over {outrankedByColumn.get(col.column)!.map((c) => `“${c}”`).join(', ')}
+                          </span>
+                        )}
                       </span>
                     )}
                     {suggestion &&
@@ -318,7 +336,11 @@ export function MappingEditor({ table, initial, onMappingReady }: Props) {
                         <button
                           type="button"
                           className="ml-2 text-xs text-neutral-500 underline decoration-dotted hover:text-[var(--loom-accent)]"
-                          title={`Low-confidence match (${suggestion.reason}). Click to apply.`}
+                          title={
+                            suggestion.outranked
+                              ? `Also a match (${suggestion.reason}), but ${suggestion.outranked.why}, so only “${suggestion.outranked.by}” was pre-selected. Several columns can share a property — apply this only if “${col.column}” holds another value of the same thing (e.g. a second email address).`
+                              : `Low-confidence match (${suggestion.reason}). Click to apply.`
+                          }
                           onClick={() => {
                             const property = ontology.properties.find((p) => p.id === suggestion.predicate)
                             updateColumn(col.column, {
@@ -328,8 +350,17 @@ export function MappingEditor({ table, initial, onMappingReady }: Props) {
                             })
                           }}
                         >
-                          possible: {ontology.properties.find((p) => p.id === suggestion.predicate)?.label} ·{' '}
-                          {suggestion.evidence} — apply?
+                          {suggestion.outranked ? (
+                            <>
+                              also matches {ontology.properties.find((p) => p.id === suggestion.predicate)?.label} —
+                              “{suggestion.outranked.by}” was pre-selected. Apply here too?
+                            </>
+                          ) : (
+                            <>
+                              possible: {ontology.properties.find((p) => p.id === suggestion.predicate)?.label} ·{' '}
+                              {suggestion.evidence} — apply?
+                            </>
+                          )}
                         </button>
                       )}
                   </td>
