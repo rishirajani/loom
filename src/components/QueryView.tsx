@@ -1,25 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { QueryCancelledError, QueryError, SparqlClient } from '../lib/sparql/client'
+import { QueryCancelledError, QueryError, type SparqlClient } from '../lib/sparql/client'
 import type { QueryResult } from '../lib/sparql/engine'
 import type { FriendlyError } from '../lib/sparql/errors'
 import { ntriplesToTurtle, resultsToCsv, termLabel, termTitle } from '../lib/sparql/format'
 import { starterQueries } from '../lib/sparql/starterQueries'
 import { downloadText } from '../lib/download'
-import { graphPrefixes } from '../lib/tripleGenerator'
 import type { MappingConfig, Ontology } from '../lib/types'
 
 interface Props {
-  turtle: string
+  /** the shared engine, owned by GraphWorkspace */
+  client: SparqlClient
+  engineFailed: boolean
   mapping: MappingConfig
   ontology: Ontology
-  onBack: () => void
-  onStartOver: () => void
+  prefixes: Record<string, string>
 }
-
-type EngineState =
-  | { status: 'loading' }
-  | { status: 'ready'; tripleCount: number }
-  | { status: 'failed'; message: string }
 
 type Outcome =
   | { status: 'idle' }
@@ -39,38 +34,14 @@ function formatMs(ms: number): string {
   return ms < 1000 ? `${Math.max(1, Math.round(ms))} ms` : `${(ms / 1000).toFixed(1)} s`
 }
 
-export function QueryView({ turtle, mapping, ontology, onBack, onStartOver }: Props) {
-  const prefixes = useMemo(() => graphPrefixes(ontology), [ontology])
+export function QueryView({ client, engineFailed, mapping, ontology, prefixes }: Props) {
   const starters = useMemo(() => starterQueries(mapping, ontology), [mapping, ontology])
   const [selectedStarter, setSelectedStarter] = useState(starters[0]?.id ?? '')
   const [query, setQuery] = useState(starters[0]?.query ?? '')
   const [edited, setEdited] = useState(false)
-  const [engine, setEngine] = useState<EngineState>({ status: 'loading' })
   const [outcome, setOutcome] = useState<Outcome>({ status: 'idle' })
   const [elapsed, setElapsed] = useState(0)
-  const clientRef = useRef<SparqlClient | null>(null)
   const runSeq = useRef(0)
-
-  // One engine per graph. Created on mount, so the 1.5 MB WebAssembly engine
-  // is only downloaded by people who actually open the query view.
-  useEffect(() => {
-    const client = new SparqlClient(turtle, prefixes)
-    clientRef.current = client
-    setEngine({ status: 'loading' })
-    client
-      .load()
-      .then((tripleCount) => {
-        if (clientRef.current === client) setEngine({ status: 'ready', tripleCount })
-      })
-      .catch((e: unknown) => {
-        if (clientRef.current !== client || e instanceof QueryCancelledError) return
-        setEngine({ status: 'failed', message: e instanceof Error ? e.message : String(e) })
-      })
-    return () => {
-      clientRef.current = null
-      client.dispose()
-    }
-  }, [turtle, prefixes])
 
   // Live elapsed time, so a slow query visibly isn't a frozen page.
   useEffect(() => {
@@ -81,8 +52,7 @@ export function QueryView({ turtle, mapping, ontology, onBack, onStartOver }: Pr
   }, [outcome])
 
   async function run() {
-    const client = clientRef.current
-    if (!client || outcome.status === 'running' || !query.trim()) return
+    if (outcome.status === 'running' || !query.trim()) return
     const seq = ++runSeq.current
     setElapsed(0)
     setOutcome({ status: 'running', startedAt: performance.now() })
@@ -103,7 +73,7 @@ export function QueryView({ turtle, mapping, ontology, onBack, onStartOver }: Pr
   }
 
   function cancel() {
-    clientRef.current?.cancel()
+    client.cancel()
   }
 
   function pickStarter(id: string) {
@@ -121,17 +91,7 @@ export function QueryView({ turtle, mapping, ontology, onBack, onStartOver }: Pr
   const selected = starters.find((s) => s.id === selectedStarter)
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-6">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold tracking-tight">Query your graph</h2>
-        <p className="text-sm text-neutral-600" aria-live="polite">
-          {engine.status === 'loading' && 'Starting the query engine… (about 1.5 MB, downloaded once)'}
-          {engine.status === 'ready' &&
-            `${engine.tripleCount} triples loaded. SPARQL runs locally in this tab — nothing is sent anywhere.`}
-          {engine.status === 'failed' && <span className="text-red-700">{engine.message}</span>}
-        </p>
-      </div>
-
+    <div className="space-y-6">
       <fieldset className="space-y-2">
         <legend className="text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
           Start from a query built from your mapping
@@ -189,7 +149,7 @@ export function QueryView({ turtle, mapping, ontology, onBack, onStartOver }: Pr
       <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => void run()}
-          disabled={running || engine.status === 'failed' || !query.trim()}
+          disabled={running || engineFailed || !query.trim()}
           className="rounded-full bg-[var(--loom-ink)] text-white px-6 py-2 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {running ? 'Running…' : 'Run query'}
@@ -216,21 +176,6 @@ export function QueryView({ turtle, mapping, ontology, onBack, onStartOver }: Pr
           setOutcome({ status: 'idle' })
         }}
       />
-
-      <div className="flex gap-3 border-t border-[var(--loom-line)] pt-6">
-        <button
-          onClick={onBack}
-          className="rounded-full border border-[var(--loom-line)] px-6 py-2 text-sm font-medium hover:bg-neutral-50 transition-colors"
-        >
-          Back to graph
-        </button>
-        <button
-          onClick={onStartOver}
-          className="rounded-full border border-[var(--loom-line)] px-6 py-2 text-sm font-medium hover:bg-neutral-50 transition-colors"
-        >
-          Start over
-        </button>
-      </div>
     </div>
   )
 }

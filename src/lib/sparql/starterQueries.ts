@@ -32,6 +32,25 @@ function variableFor(id: string, taken: Set<string>): string {
 const LABEL_LOCAL_NAMES = ['name', 'title', 'label', 'prefLabel', 'givenName', 'familyName']
 
 /**
+ * The mapped property that best serves as an entity's display name (e.g.
+ * schema:name, dct:title), or the first mapped literal property, or none.
+ * Shared by the starter queries and the graph explorer so both label
+ * entities the same way.
+ */
+export function labelPredicateFor(mapping: MappingConfig): string | undefined {
+  const literalPredicates: string[] = []
+  for (const col of mapping.columns) {
+    if (col.kind === 'literal' && col.predicate && !literalPredicates.includes(col.predicate)) {
+      literalPredicates.push(col.predicate)
+    }
+  }
+  return (
+    LABEL_LOCAL_NAMES.map((n) => literalPredicates.find((p) => localName(p) === n)).find(Boolean) ??
+    literalPredicates[0]
+  )
+}
+
+/**
  * Queries generated from the user's own mapping, so the first thing they see
  * in the editor runs against their data with their properties, rather than a
  * generic example they have to adapt. Every query here is pinned by a test
@@ -49,9 +68,7 @@ export function starterQueries(mapping: MappingConfig, ontology: Ontology): Star
     const bucket = col.kind === 'objectRef' ? refPredicates : literalPredicates
     if (!bucket.includes(col.predicate)) bucket.push(col.predicate)
   }
-  const labelPredicate =
-    LABEL_LOCAL_NAMES.map((n) => literalPredicates.find((p) => localName(p) === n)).find(Boolean) ??
-    literalPredicates[0]
+  const labelPredicate = labelPredicateFor(mapping)
 
   const q = (body: string) => `${prologue}\n\n${body.trim()}\n`
   const queries: StarterQuery[] = []
