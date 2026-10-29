@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { parseCsvFile } from '../csvParser'
 
 // parseCsvFile takes a browser File and reads it via PapaParse's FileReader
-// path, so these tests run in happy-dom (declared above) rather than the
-// default node environment used by the pure-logic suites.
+// path, so these tests run in happy-dom (the `dom` project in vite.config.ts)
+// rather than the node environment used by the pure-logic suites.
 function csvFile(contents: string, name = 'test.csv'): File {
   return new File([contents], name, { type: 'text/csv' })
 }
@@ -37,6 +37,25 @@ describe('parseCsvFile', () => {
     expect(table.headers).toEqual(['id', 'name', 'name_1'])
     expect(table.rows[0]).toEqual({ id: '1', name: 'Ada', name_1: 'Lovelace' })
     expect(parseWarnings.some((w) => w.toLowerCase().includes('duplicate'))).toBe(true)
+  })
+
+  // Regression: a generated rename must never collide with a header the file
+  // already has. Here the second `name` used to become `name_1`, clashing with
+  // the real `name_1` column; both mapped to one row key and `b` was silently
+  // lost. Real headers keep their names; the duplicate skips to the next free
+  // suffix.
+  it('never renames a duplicate onto an existing header', async () => {
+    const { table, parseWarnings } = await parseCsvFile(csvFile('name,name,name_1\na,b,c'))
+    expect(table.headers).toEqual(['name', 'name_2', 'name_1'])
+    expect(new Set(table.headers).size).toBe(table.headers.length)
+    expect(table.rows[0]).toEqual({ name: 'a', name_2: 'b', name_1: 'c' })
+    expect(parseWarnings.some((w) => w.includes('name → name_2'))).toBe(true)
+  })
+
+  it('skips past an existing suffix that appears before the duplicate', async () => {
+    const { table } = await parseCsvFile(csvFile('name_1,name,name,name\nw,x,y,z'))
+    expect(table.headers).toEqual(['name_1', 'name', 'name_2', 'name_3'])
+    expect(table.rows[0]).toEqual({ name_1: 'w', name: 'x', name_2: 'y', name_3: 'z' })
   })
 
   it('drops empty-named columns (blank header / trailing comma) and warns', async () => {
