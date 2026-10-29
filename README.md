@@ -19,7 +19,7 @@ The bet behind Loom is simple: good ontology tooling should not hide semantics, 
 Current flow:
 
 ```text
-CSV import → assisted ontology mapping → RDF triple generation → Turtle export → SPARQL querying
+CSV import → assisted ontology mapping → RDF triple generation → Turtle export → SPARQL querying and graph exploration
 ```
 
 Not shipped yet: SHACL validation, Excel import, arbitrary ontology upload, and embedding-based semantic matching. These are listed in the roadmap below.
@@ -66,7 +66,9 @@ npm run lint
 
 5. **Generate** — triples are built with N3.js and serialized to Turtle. Identifier columns become entity IRIs, skipped columns are reported, and fallback row IRIs are deterministic.
 
-6. **Query** — the generated Turtle loads into [Oxigraph](https://github.com/oxigraph/oxigraph) compiled to WebAssembly, so SPARQL runs in the browser too. Starter queries are built from your mapping (a table of your entities, followed references, property coverage, a yes/no check, a CONSTRUCT example). Queries run in a Web Worker, so a slow query never freezes the page and **Cancel** really stops it. The query view is read-only: updates are refused with an explanation. The engine (about 1.5 MB compressed) only downloads when you open the query view.
+6. **Query** — the generated Turtle loads into [Oxigraph](https://github.com/oxigraph/oxigraph) compiled to WebAssembly, so SPARQL runs in the browser too. Starter queries are built from your mapping (a table of your entities, followed references, property coverage, a yes/no check, a CONSTRUCT example). Queries run in a Web Worker, so a slow query never freezes the page and **Cancel** really stops it. The query view is read-only: updates are refused with an explanation. The engine (about 1.5 MB compressed) only downloads when you open the query or explore view.
+
+7. **Explore** — walk the graph one entity at a time. The explorer opens on the first entity of your mapped class and draws it with its direct neighbours. Clicking a neighbour, a connection, a search result or **Random** moves there, and a breadcrumb trail records the path. It is built for the keyboard and screen readers from the start: arrow keys move between links, Enter follows one, Backspace goes back, `/` opens search, and each move is announced. The picture is drawn in plain SVG and hidden from assistive technology, because the connections list beside it carries the same information as real, focusable buttons.
 
 ## What Loom currently does well
 
@@ -80,6 +82,7 @@ npm run lint
 - Coverage warning when the selected class appears to be a poor fit
 - Turtle preview and download
 - In-browser SPARQL (SELECT, ASK, CONSTRUCT, DESCRIBE) with starter queries, CSV/JSON/Turtle result downloads, and cancellable queries
+- Keyboard- and screen-reader-accessible graph explorer for entity neighbourhoods
 - Back-to-mapping flow with mapping state preserved
 
 ## Known limitations
@@ -89,6 +92,7 @@ npm run lint
 - The suggester is heuristic, not a calibrated probability model.
 - Synonyms and aliases are curated manually for now.
 - SHACL validation is not implemented yet.
+- The explorer shows one hop at a time and draws at most 16 neighbours (all of them are listed); there is no whole-graph overview yet.
 - The SPARQL editor is a plain text area (no syntax highlighting or autocomplete). Result tables show the first 500 rows; downloads include all of them.
 - Mapping-preservation logic currently lives in the React component and should be extracted for easier unit testing.
 - Drag-and-drop import still needs stronger keyboard accessibility.
@@ -106,6 +110,7 @@ npm run lint
 - [x] Ontology/class coverage warning
 - [ ] Excel (`.xlsx`) import
 - [x] In-browser SPARQL querying with Oxigraph-WASM
+- [x] Accessible graph neighbourhood explorer
 - [ ] SHACL validation with human-readable errors
 - [ ] Embedding-based semantic mapping suggestions
 - [ ] Mapping config save/reuse
@@ -125,7 +130,7 @@ npm run lint
 
 ## Related work and acknowledgements
 
-- **[Oxigraph](https://github.com/oxigraph/oxigraph)** — the SPARQL engine behind Loom's query view, compiled to WebAssembly (MIT / Apache-2.0).
+- **[Oxigraph](https://github.com/oxigraph/oxigraph)** — the SPARQL engine behind Loom's query and explore views, compiled to WebAssembly (MIT / Apache-2.0).
 - **[Open Ontologies](https://github.com/fabio-rovai/open-ontologies)** — F. Rovai, *Open Ontologies: Tool-Augmented Ontology Engineering with Stable Matching Alignment*, [arXiv:2605.09184](https://arxiv.org/abs/2605.09184). Loom's "one pre-selected column per property" rule adapts its stable one-to-one matching step, which keeps only the top-scoring candidate on each side of an ontology alignment. Loom differs in two ways: losing columns become opt-in hints instead of being discarded, and ties are broken by an explicit, reported rule. The idea is borrowed; no code is. Open Ontologies is an MCP server and desktop studio for AI-assisted ontology engineering; Loom is a no-install browser tool, so the two are complementary rather than alternatives.
 
 ## Contributing

@@ -9,8 +9,8 @@ interface Props {
   mapping: MappingConfig
   onBack: () => void
   onStartOver: () => void
-  /** open the query view over exactly this Turtle */
-  onQuery: (turtle: string) => void
+  /** open the query/explore workspace over exactly this Turtle */
+  onOpen: (turtle: string, tab: 'query' | 'explore') => void
 }
 
 interface Stats {
@@ -20,7 +20,7 @@ interface Stats {
   duplicateIdentifiers: string[]
 }
 
-export function ResultsView({ table, mapping, onBack, onStartOver, onQuery }: Props) {
+export function ResultsView({ table, mapping, onBack, onStartOver, onOpen }: Props) {
   const [turtle, setTurtle] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
@@ -136,7 +136,7 @@ export function ResultsView({ table, mapping, onBack, onStartOver, onQuery }: Pr
         {turtle || 'Generating…'}
       </pre>
 
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <button
           onClick={download}
           disabled={!turtle}
@@ -145,7 +145,14 @@ export function ResultsView({ table, mapping, onBack, onStartOver, onQuery }: Pr
           Download graph.ttl
         </button>
         <button
-          onClick={() => onQuery(turtle)}
+          onClick={() => onOpen(turtle, 'explore')}
+          disabled={!turtle}
+          className="rounded-full border border-[var(--loom-accent)] text-[var(--loom-accent)] px-6 py-2 text-sm font-medium hover:bg-[var(--loom-accent)] hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Explore the graph
+        </button>
+        <button
+          onClick={() => onOpen(turtle, 'query')}
           disabled={!turtle}
           className="rounded-full border border-[var(--loom-accent)] text-[var(--loom-accent)] px-6 py-2 text-sm font-medium hover:bg-[var(--loom-accent)] hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >

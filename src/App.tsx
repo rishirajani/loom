@@ -5,10 +5,13 @@ import { ResultsView } from './components/ResultsView'
 import { bundledOntologies } from './lib/ontologies'
 import type { MappingConfig, ParsedTable } from './lib/types'
 
-// Loaded on demand: the query view (and the Turtle parser it uses) is only
-// fetched when someone opens it, keeping the first load as small as before.
+// Loaded on demand: the query and explore views (and the Turtle parser they
+// use) are only fetched when someone opens them, keeping the first load small.
 // The 1.5 MB query engine itself loads separately, inside its worker.
-const QueryView = lazy(() => import('./components/QueryView').then((m) => ({ default: m.QueryView })))
+const GraphWorkspace = lazy(() =>
+  import('./components/GraphWorkspace').then((m) => ({ default: m.GraphWorkspace })),
+)
+type WorkspaceTab = 'query' | 'explore'
 
 type Step = 'import' | 'map' | 'results' | 'query'
 
@@ -21,6 +24,7 @@ function App() {
   // The exact Turtle shown and downloaded on the results step, so queries run
   // over the same graph the user exports.
   const [queryTurtle, setQueryTurtle] = useState('')
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('query')
   const ontology = mapping ? bundledOntologies.find((o) => o.id === mapping.ontologyId) : undefined
 
   function reset() {
@@ -87,8 +91,9 @@ function App() {
             mapping={mapping}
             onBack={() => setStep('map')}
             onStartOver={reset}
-            onQuery={(turtle) => {
+            onOpen={(turtle, tab) => {
               setQueryTurtle(turtle)
+              setWorkspaceTab(tab)
               setStep('query')
             }}
           />
@@ -96,12 +101,13 @@ function App() {
 
         {step === 'query' && mapping && ontology && queryTurtle && (
           <Suspense
-            fallback={<p className="max-w-4xl mx-auto text-sm text-neutral-500">Opening the query view…</p>}
+            fallback={<p className="max-w-4xl mx-auto text-sm text-neutral-500">Opening…</p>}
           >
-            <QueryView
+            <GraphWorkspace
               turtle={queryTurtle}
               mapping={mapping}
               ontology={ontology}
+              initialTab={workspaceTab}
               onBack={() => setStep('results')}
               onStartOver={reset}
             />
