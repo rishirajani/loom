@@ -144,13 +144,13 @@ export function GraphWorkspace({ turtle, mapping, ontology, initialTab, onBack, 
       <div className="flex gap-3 border-t border-[var(--loom-line)] pt-6">
         <button
           onClick={onBack}
-          className="rounded-full border border-[var(--loom-line)] px-6 py-2 text-sm font-medium hover:bg-neutral-50 transition-colors"
+          className="rounded-full border border-[var(--loom-line)] px-6 py-2 text-sm font-medium hover:bg-[var(--loom-hover)] hover:border-[var(--loom-thread-light)] transition-colors"
         >
           Back to results
         </button>
         <button
           onClick={onStartOver}
-          className="rounded-full border border-[var(--loom-line)] px-6 py-2 text-sm font-medium hover:bg-neutral-50 transition-colors"
+          className="rounded-full border border-[var(--loom-line)] px-6 py-2 text-sm font-medium hover:bg-[var(--loom-hover)] hover:border-[var(--loom-thread-light)] transition-colors"
         >
           Start over
         </button>
