@@ -106,7 +106,7 @@ export function QueryView({ client, engineFailed, mapping, ontology, prefixes }:
               className={`rounded-full border px-3 py-1 text-xs transition-colors ${
                 s.id === selectedStarter && !edited
                   ? 'border-[var(--loom-accent)] bg-[var(--loom-accent)] text-white'
-                  : 'border-[var(--loom-line)] hover:bg-neutral-50'
+                  : 'border-[var(--loom-line)] hover:bg-[var(--loom-hover)] hover:border-[var(--loom-thread-light)]'
               }`}
             >
               {s.title}
@@ -220,7 +220,7 @@ function Results({
 
   const { result, ms } = outcome
   const secondaryButton =
-    'rounded-full border border-[var(--loom-line)] px-4 py-1.5 text-xs font-medium hover:bg-neutral-50 transition-colors'
+    'rounded-full border border-[var(--loom-line)] px-4 py-1.5 text-xs font-medium hover:bg-[var(--loom-hover)] hover:border-[var(--loom-thread-light)] transition-colors'
 
   if (result.kind === 'ask') {
     return (

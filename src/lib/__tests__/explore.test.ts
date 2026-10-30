@@ -19,7 +19,7 @@ import {
   sparqlString,
   type Neighbourhood,
 } from '../explore/neighbourhood'
-import { displayLabel, labelCharsFor, layoutNeighbourhood, MAX_DRAWN_NEIGHBOURS } from '../explore/layout'
+import { displayLabel, labelCharsFor, layoutNeighbourhood, MAX_DRAWN_NEIGHBOURS, textBox } from '../explore/layout'
 import {
   announceFocus,
   announceSelection,
@@ -227,6 +227,52 @@ describe('radial layout', () => {
     // A single link counts too: its line is often too short for a label.
     expect(layoutNeighbourhood(nb([edge(1)])).sharedPredicate).toBe(`${SCHEMA}colleague`)
     expect(layoutNeighbourhood(nb([])).sharedPredicate).toBeUndefined()
+  })
+
+  it('puts link names on the lines when there is room (the two-neighbour case)', () => {
+    const layout = layoutNeighbourhood(nb([edge(1), edge(2)]), 880, 460)
+    expect(layout.showEdgeLabels).toBe(true)
+    expect(layout.neighbours.map((n) => n.edgeLabel.text)).toEqual(['colleague', 'colleague'])
+  })
+
+  it('collapses link names into the caption when they would overlap (a crowded hub)', () => {
+    const hub = nb(Array.from({ length: MAX_DRAWN_NEIGHBOURS }, (_, i) => edge(i)))
+    expect(layoutNeighbourhood(hub, 640, 440).showEdgeLabels).toBe(false)
+  })
+
+  it('decides on a phone by the real names: long names leave no room, short ones do', () => {
+    const named = (n: number, name: string) => ({ ...edge(n), targetLabel: name })
+    const people = nb([named(1, 'Grace Hopper'), named(2, 'Alan Turing')])
+    expect(layoutNeighbourhood(people, 340, 300).showEdgeLabels).toBe(false)
+    expect(layoutNeighbourhood(nb([edge(1), edge(2)]), 340, 300).showEdgeLabels).toBe(true) // "T1", "T2"
+  })
+
+  it('never lets a drawn link name overlap a circle, a name or another link name', () => {
+    // Property-style check across sizes and counts: whenever names are shown,
+    // their boxes are clear of everything else.
+    for (const [w, h] of [[340, 300], [480, 346], [640, 440], [880, 460]]) {
+      for (let n = 1; n <= MAX_DRAWN_NEIGHBOURS; n++) {
+        const layout = layoutNeighbourhood(nb(Array.from({ length: n }, (_, i) => edge(i))), w, h)
+        if (!layout.showEdgeLabels) continue
+        const labels = layout.neighbours.map((x) => textBox(x.edgeLabel))
+        const others = [
+          textBox(layout.focus.name),
+          ...layout.neighbours.map((x) => textBox(x.name)),
+          { left: layout.cx - layout.focusR, right: layout.cx + layout.focusR, top: layout.cy - layout.focusR, bottom: layout.cy + layout.focusR },
+        ]
+        const hit = (a: ReturnType<typeof textBox>, b: ReturnType<typeof textBox>) =>
+          a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+        labels.forEach((a, i) => {
+          for (const o of others) expect(hit(a, o), `${w}x${h}, ${n} neighbours`).toBe(false)
+          labels.slice(i + 1).forEach((b) => expect(hit(a, b), `${w}x${h}, ${n} neighbours`).toBe(false))
+        })
+      }
+    }
+  })
+
+  it('uses the given namer for link names (the UI passes compact property names)', () => {
+    const layout = layoutNeighbourhood(nb([edge(1)]), 880, 460, () => 'reports to')
+    expect(layout.neighbours[0].edgeLabel.text).toBe('reports to')
   })
 
   it('draws one node per neighbour even when several links reach it', () => {

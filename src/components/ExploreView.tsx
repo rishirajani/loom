@@ -40,9 +40,6 @@ interface Props {
 
 type Loaded = { status: 'loading' } | { status: 'ready'; nb: Neighbourhood } | { status: 'error'; message: string }
 
-function truncate(text: string, max = 24): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text
-}
 
 /**
  * Run a query, retrying once if it was cancelled — the Query tab's Cancel
@@ -83,6 +80,15 @@ export function ExploreView({ client, mapping, ontology, prefixes }: Props) {
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
+
+  // The last neighbourhood drawn. While the next one loads (usually a few
+  // milliseconds), the drawing stays on screen instead of flashing to
+  // "Loading…", so the move can animate from the old view to the new.
+  const lastShown = useRef<Neighbourhood | undefined>(undefined)
+  const edgeText = useCallback(
+    (es: Neighbourhood['edges']) => [...new Set(es.map((e) => predicateLabel(e.predicate, prefixes)))].join(', '),
+    [prefixes],
+  )
 
   const [nav, dispatchRaw] = useReducer(
     (state: NavState, { action, edges }: { action: NavAction; edges: Neighbourhood['edges'] }) =>
@@ -184,7 +190,12 @@ export function ExploreView({ client, mapping, ontology, prefixes }: Props) {
 
   const focusName = focusIri ? displayLabel(focusIri, nb?.label) : ''
   const drawHeight = Math.round(Math.min(460, Math.max(300, drawWidth * 0.72)))
-  const layout = nb ? layoutNeighbourhood(nb, drawWidth, drawHeight) : undefined
+  if (nb) lastShown.current = nb
+  // "Not loaded yet" covers the render right after a move, before the load
+  // has even been registered — dropping the drawing there would unmount it
+  // and lose the animation.
+  const shown = nb ?? (current?.status !== 'error' ? lastShown.current : undefined)
+  const layout = shown ? layoutNeighbourhood(shown, drawWidth, drawHeight, edgeText) : undefined
 
   return (
     <div className="space-y-4">
@@ -199,7 +210,7 @@ export function ExploreView({ client, mapping, ontology, prefixes }: Props) {
         <button
           type="button"
           onClick={() => void pickRandom()}
-          className="rounded-full border border-[var(--loom-line)] px-4 py-2 text-xs font-medium hover:bg-neutral-50 transition-colors"
+          className="rounded-full border border-[var(--loom-line)] px-4 py-2 text-xs font-medium hover:bg-[var(--loom-hover)] hover:border-[var(--loom-thread-light)] transition-colors"
         >
           Random {classLabel}
         </button>
@@ -244,16 +255,16 @@ export function ExploreView({ client, mapping, ontology, prefixes }: Props) {
             aria-roledescription="graph explorer"
             aria-label={focusName ? `Graph explorer, at ${focusName}` : 'Graph explorer'}
             aria-describedby={helpId}
+            aria-busy={!nb && current?.status !== 'error'}
             onKeyDown={onRegionKeyDown}
             className="rounded-lg border border-[var(--loom-line)] bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--loom-accent)]"
           >
             {current?.status === 'error' ? (
               <p className="p-6 text-sm text-red-800">{current.message}</p>
-            ) : layout && nb ? (
+            ) : layout ? (
               <GraphSvg
                 layout={layout}
-                focusName={focusName}
-                selectedEdge={nav.selected !== null ? edges[nav.selected] : undefined}
+                selectedEdge={nb && nav.selected !== null ? edges[nav.selected] : undefined}
                 prefixes={prefixes}
                 onFollow={(iri) => goAndFocus({ type: 'go', iri })}
               />
@@ -324,7 +335,7 @@ export function ExploreView({ client, mapping, ontology, prefixes }: Props) {
                         className={`w-full text-left rounded-md border px-2 py-1.5 text-xs transition-colors ${
                           nav.selected === i
                             ? 'border-[var(--loom-accent)] bg-[var(--loom-accent)]/10'
-                            : 'border-transparent hover:bg-neutral-50'
+                            : 'border-transparent hover:bg-[var(--loom-hover)]'
                         }`}
                       >
                         <span className="text-neutral-500">
@@ -350,20 +361,24 @@ export function ExploreView({ client, mapping, ontology, prefixes }: Props) {
 
 function GraphSvg({
   layout,
-  focusName,
   selectedEdge,
   prefixes,
   onFollow,
 }: {
   layout: Layout
-  focusName: string
   selectedEdge?: Neighbourhood['edges'][number]
   prefixes: Record<string, string>
   onFollow: (iri: string) => void
 }) {
-  // Smaller circles on a narrow drawing leave the lines long enough to read.
-  const FOCUS_R = layout.width < 480 ? 20 : 30
-  const NODE_R = layout.width < 480 ? 7 : 9
+  const focusIri = layout.focus.iri
+  // Every entity is drawn as one keyed group positioned by a CSS transform, so
+  // when you follow a link React keeps the same element for the neighbour you
+  // chose (and for the entity you came from): the transition in index.css then
+  // slides it into the centre, and the previous focus out to the ring.
+  const nodes = [
+    { iri: focusIri, x: layout.cx, y: layout.cy, r: layout.focusR, focus: true as const, n: undefined },
+    ...layout.neighbours.map((n) => ({ iri: n.target, x: n.x, y: n.y, r: layout.nodeR, focus: false as const, n })),
+  ]
   return (
     // The connections list carries the same information as real, focusable
     // buttons, so the drawing itself is hidden from assistive technology.
@@ -378,103 +393,97 @@ function GraphSvg({
           <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
         </marker>
       </defs>
+
+      {/* Lines and their names belong to one focus, so they are keyed by it and fade in after each move. */}
       {layout.neighbours.map((n) => {
         const selected = !!selectedEdge && selectedEdge.target === n.target
         const hasOut = n.edges.some((e) => e.direction === 'out')
         const hasIn = n.edges.some((e) => e.direction === 'in')
-        // Stop lines at the circles' edges so arrowheads stay visible.
-        const dx = n.x - layout.cx
-        const dy = n.y - layout.cy
-        const len = Math.hypot(dx, dy) || 1
-        const x1 = layout.cx + (dx / len) * (FOCUS_R + 2)
-        const y1 = layout.cy + (dy / len) * (FOCUS_R + 2)
-        const x2 = n.x - (dx / len) * (NODE_R + 2)
-        const y2 = n.y - (dy / len) * (NODE_R + 2)
-        // Edge labels sit nearer the neighbour than the focus, where lines
-        // are further apart.
-        const mx = layout.cx + dx * 0.62
-        const my = layout.cy + dy * 0.62
-        const cos = Math.cos(n.angle)
-        const anchor = cos > 0.25 ? 'start' : cos < -0.25 ? 'end' : 'middle'
-        const lx = n.x + (anchor === 'start' ? 14 : anchor === 'end' ? -14 : 0)
-        const ly = n.y + (anchor === 'middle' ? (Math.sin(n.angle) > 0 ? 24 : -16) : 4)
-        const predicates = [...new Set(n.edges.map((e) => predicateLabel(e.predicate, prefixes)))].join(', ')
+        const showName = layout.showEdgeLabels || selected
         return (
           <g
-            key={n.target}
-            className={selected ? 'text-[var(--loom-accent)]' : 'text-neutral-400'}
+            key={`${focusIri}|${n.target}`}
+            className={`loom-graph-fade ${selected ? 'text-[var(--loom-accent)]' : 'text-neutral-400'}`}
             style={{ cursor: 'pointer' }}
             onClick={() => onFollow(n.target)}
           >
-            <title>{`${n.label} — ${predicates}`}</title>
             <line
-              x1={x1}
-              y1={y1}
-              x2={x2}
-              y2={y2}
+              {...n.line}
               stroke="currentColor"
               strokeWidth={selected ? 2.5 : 1.25}
               markerEnd={hasOut ? 'url(#loom-arrow)' : undefined}
               markerStart={hasIn ? 'url(#loom-arrow)' : undefined}
             />
-            {(!layout.sharedPredicate || selected) && (
+            {showName && (
               <text
-                x={mx}
-                y={my - 4}
+                x={n.edgeLabel.x}
+                y={n.edgeLabel.y}
                 textAnchor="middle"
-                fontSize="10"
+                fontSize={n.edgeLabel.fontSize}
                 className={selected ? 'fill-[var(--loom-accent)]' : 'fill-neutral-500'}
                 stroke="white"
                 strokeWidth="3"
                 paintOrder="stroke"
               >
-                {truncate(predicates, 22)}
+                {layout.showEdgeLabels
+                  ? n.edgeLabel.text
+                  : [...new Set(n.edges.map((e) => predicateLabel(e.predicate, prefixes)))].join(', ')}
               </text>
             )}
+          </g>
+        )
+      })}
+
+      {nodes.map((node) => {
+        const selected = !!selectedEdge && !node.focus && selectedEdge.target === node.iri
+        const name = node.focus ? layout.focus.name : node.n!.name
+        return (
+          <g
+            key={node.iri}
+            className="loom-graph-node"
+            style={{ transform: `translate(${node.x}px, ${node.y}px)`, cursor: node.focus ? 'default' : 'pointer' }}
+            onClick={node.focus ? undefined : () => onFollow(node.iri)}
+          >
+            {!node.focus && <title>{node.n!.label}</title>}
             <circle
-              cx={n.x}
-              cy={n.y}
-              r={selected ? NODE_R + 2 : NODE_R}
-              className={selected ? 'fill-[var(--loom-accent)]' : 'fill-[var(--loom-thread-light)]'}
-              stroke="white"
+              cx={0}
+              cy={0}
+              r={selected ? node.r + 2 : node.r}
+              className={
+                node.focus
+                  ? 'fill-[var(--loom-ink)]'
+                  : selected
+                    ? 'fill-[var(--loom-accent)]'
+                    : 'fill-[var(--loom-thread-light)]'
+              }
+              stroke={node.focus ? 'none' : 'white'}
               strokeWidth="2"
             />
             <text
-              x={lx}
-              y={ly}
-              textAnchor={anchor}
-              fontSize="12"
-              className={selected ? 'fill-[var(--loom-ink)] font-semibold' : 'fill-[var(--loom-ink)]'}
+              x={name.x - node.x}
+              y={name.y - node.y}
+              textAnchor={name.anchor}
+              fontSize={name.fontSize}
+              className={node.focus || selected ? 'fill-[var(--loom-ink)] font-semibold' : 'fill-[var(--loom-ink)]'}
               stroke="white"
-              strokeWidth="3"
+              strokeWidth={node.focus ? 5 : 3}
               paintOrder="stroke"
             >
-              {truncate(n.label, layout.labelChars)}
+              {name.text}
             </text>
           </g>
         )
       })}
-      <circle cx={layout.cx} cy={layout.cy} r={FOCUS_R} className="fill-[var(--loom-ink)]" />
-      <text
-        x={layout.cx}
-        y={layout.cy + FOCUS_R + 18}
-        textAnchor="middle"
-        fontSize="13"
-        className="fill-[var(--loom-ink)] font-semibold"
-        stroke="white"
-        strokeWidth="5"
-        paintOrder="stroke"
-      >
-        {truncate(focusName, 30)}
-      </text>
-      {layout.sharedPredicate && (
+
+      {!layout.showEdgeLabels && layout.neighbours.length > 0 && (
         <text x={12} y={layout.height - 12} fontSize="11" className="fill-neutral-500">
-          {layout.neighbours.length === 1 ? 'Link' : 'All links'}: {predicateLabel(layout.sharedPredicate, prefixes)}{' '}
-          (arrows show direction)
+          {layout.sharedPredicate
+            ? `${layout.neighbours.length === 1 ? 'Link' : 'All links'}: ${predicateLabel(layout.sharedPredicate, prefixes)} (arrows show direction)`
+            : 'Link names are listed under Connections (select a link to show its name here)'}
         </text>
       )}
       {layout.neighbours.length === 0 && (
-        <text x={layout.cx} y={layout.cy + FOCUS_R + 40} textAnchor="middle" fontSize="11" className="fill-neutral-500">
+        <text x={layout.cx} y={layout.cy + layout.focusR + 40} textAnchor="middle" fontSize="11" className="fill-neutral-500">
           No links to other entities
         </text>
       )}
@@ -581,7 +590,7 @@ function EntitySearch({
                 aria-selected={i === active}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pick(hit)}
-                className={`cursor-pointer px-3 py-2 ${i === active ? 'bg-neutral-100' : 'hover:bg-neutral-50'}`}
+                className={`cursor-pointer px-3 py-2 ${i === active ? 'bg-neutral-100' : 'hover:bg-[var(--loom-hover)]'}`}
               >
                 <span className="font-medium">{displayLabel(hit.iri, hit.label)}</span>{' '}
                 <span className="font-mono text-xs text-neutral-400">{compactIri(hit.iri, {})}</span>
